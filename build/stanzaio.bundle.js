@@ -1,7 +1,7 @@
 (function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.XMPP = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({"/Users/danieleghidoli/www/wallapop/stanza.io/index.js":[function(require,module,exports){
 'use strict';
 
-exports.VERSION = '8.0.2';
+exports.VERSION = '8.0.3';
 
 exports.JID = require('xmpp-jid').JID;
 exports.Client = require('./lib/client');
@@ -89,11 +89,6 @@ function Client(opts) {
     this.sm = new StreamManagement(this);
 
     this.transports = {};
-
-    this.use(require('./plugins/websocket'));
-    this.use(require('./plugins/oldwebsocket'));
-    this.use(require('./plugins/bosh'));
-
 
     this.on('stream:data', function (data) {
         var json = data.toJSON();
@@ -332,27 +327,25 @@ Client.prototype.connect = function (opts, transInfo) {
     var self = this;
 
     this._initConfig(opts);
+    
+    if (!transInfo && self.config.transports.length === 1) {
+      transInfo = {};
+      transInfo.name = self.config.transports[0];
+    }
 
-    if (transInfo && transInfo.name && transInfo.url) {
+    if (transInfo && transInfo.name) {
+        if (transInfo.name === 'websocket' || transInfo.name === 'old-websocket') {
+            this.use(require('./plugins/websocket'));
+            this.use(require('./plugins/oldwebsocket'));
+        }
+        if (transInfo.name === 'bosh') {
+            this.use(require('./plugins/bosh'));
+        }
         var trans = self.transport = new self.transports[transInfo.name](self.sm, self.stanzas);
         trans.on('*', function (event, data) {
             self.emit(event, data);
         });
         return trans.connect(self.config);
-    }
-
-    if (!transInfo && self.config.transports.length === 1) {
-        transInfo = {};
-        transInfo.name = self.config.transports[0];
-        if (transInfo.name === 'websocket' || transInfo.name === 'old-websocket') {
-            transInfo.url = self.config.wsURL;
-        }
-        if (transInfo.name === 'bosh') {
-            transInfo.url = self.config.boshURL;
-        }
-        if (transInfo.name && transInfo.url) {
-            return self.connect(null, transInfo);
-        }
     }
 
     return self.discoverBindings(self.config.server, function (err, endpoints) {
@@ -2583,7 +2576,9 @@ module.exports = function (client) {
 },{}],"/Users/danieleghidoli/www/wallapop/stanza.io/lib/plugins/receipts.js":[function(require,module,exports){
 'use strict';
 
-module.exports = function (client) {
+module.exports = function (client, stanzas, config) {
+
+    var sendReceipts =  config.sendReceipts !== false;
 
     client.disco.addFeature('urn:xmpp:receipts');
 
@@ -2593,7 +2588,7 @@ module.exports = function (client) {
             chat: true,
             headline: true
         };
-        if (ackTypes[msg.type] && msg.requestReceipt && !msg.receipt) {
+        if (sendReceipts && ackTypes[msg.type] && msg.requestReceipt && !msg.receipt) {
             client.sendMessage({
                 to: msg.from,
                 type: msg.type,
@@ -2841,6 +2836,7 @@ module.exports = function (client, stanzas) {
 
     client.on('disconnected', function () {
         client.features.negotiated.sasl = false;
+        client.releaseGroup('sasl');
     });
 };
 
