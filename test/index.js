@@ -1,5 +1,5 @@
 // Generic Connection Tests
-require('./connection');
+//require('./connection');
 
 // Stanza Support Tests
 require('./stanza-dataforms');
